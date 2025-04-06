@@ -120,7 +120,7 @@ package apb_scoreboard_pkg;
                 // State machine transitions for APB transaction phases
                 case (current_state)
                     IDLE_PHASE: begin
-                        ideal_phase();                 // Process idle phase behavior
+                        ideal_phase();                     // Call ideal phase function
                         if (seq_item.process == (7'b0000011) || seq_item.process == (7'b0100011)) begin
                             current_state = SETUP_PHASE;  // Transition to SETUP phase for valid operations
                         end else begin
@@ -128,7 +128,6 @@ package apb_scoreboard_pkg;
                         end
                     end
                     SETUP_PHASE: begin
-                        setup_phase();                 // Process setup phase behavior
                         if (!PSEL0_ref && !PSEL1_ref) begin
                             current_state = IDLE_PHASE;                 // Transition to ACCESS
                         end else begin
@@ -136,7 +135,7 @@ package apb_scoreboard_pkg;
                         end
                     end
                     ACCESS_PHASE: begin
-                        access_phase();                // Process access phase behavior
+                        access_phase();                     // Call access phase function
                         if (PREADY_ref && ((seq_item.process == (7'b0000011)) || (seq_item.process == (7'b0100011)))) begin
                             current_state = SETUP_PHASE;  // Transition to SETUP phase when ready
                             end_access = 1;            // Signal end of access
@@ -178,70 +177,7 @@ package apb_scoreboard_pkg;
 
         // Ideal phase function: Manage idle state activities and initial signal setup
         function ideal_phase;
-            if (setup_rst_ideal) begin
-                // Update outputs based on end-of-access conditions
-                if (end_access && PWRITE_ref) begin
-                    slave_out_ref = PWDATA_ref & {{8{PSTRB_ref[3]}},
-                                                  {8{PSTRB_ref[2]}},
-                                                  {8{PSTRB_ref[1]}},
-                                                  {8{PSTRB_ref[0]}}}; // Update slave output for write transactions
-                end
-
-                if (end_access && !PWRITE_ref) begin
-                    master_out_ref = seq_item.PRDATA;   // Capture read data for read transactions
-                end
-
-                end_access = 0;                         // Clear end access signal
-
-                // Setup initial signal values based on sequence item
-                PADDR_ref = seq_item.address;           // Assign transaction address
-                PENABLE_ref = 0;                        // Deassert enable signal
-                PPROT_ref = 3'b000;                     // Set protection bits to default level
-                PWDATA_ref = seq_item.master_in;        // Assign write data from sequence item
-                PREADY_ref = 0;                         // Clear ready signal
-                // Select peripheral based on address value
-                if (seq_item.address == 4000) begin
-                    PSEL1_ref = 0;
-                    PSEL0_ref = 1;
-                end else if (seq_item.address == 4001) begin
-                    PSEL1_ref = 1;
-                    PSEL0_ref = 0;
-                end else begin
-                    PSEL1_ref = 0;
-                    PSEL0_ref = 0;
-                end
-                // Configure operation type (read or write) and strobe signals
-                if (seq_item.process == 7'b0000011) begin        // For read operation
-                    PWRITE_ref = 0;                       // Set as read
-                    PSTRB_ref = 4'b0000;                  // No strobe for reads
-                end else if (seq_item.process == 7'b0100011) begin // For write operation
-                    PWRITE_ref = 1;                       // Set as write
-                    case (seq_item.data_size)
-                        2'b00:                        // Byte access
-                            PSTRB_ref = (4'b0001 << seq_item.address[1:0]);
-                        2'b01:                        // Half-word access
-                            PSTRB_ref = (4'b0011 << {seq_item.address[1],1'b0});
-                        2'b10:                        // Word access
-                            PSTRB_ref = 4'b1111;
-                        default: PSTRB_ref = 4'b1111;
-                    endcase
-                end
-
-                setup_rst_ideal = 0;                   // Clear the setup reset flag
-
-            end
-
-            if (end_access && PWRITE_ref) begin
-                slave_out_ref = PWDATA_ref & {{8{PSTRB_ref[3]}},
-                                              {8{PSTRB_ref[2]}},
-                                              {8{PSTRB_ref[1]}},
-                                              {8{PSTRB_ref[0]}}}; // Process write data update
-            end
-
-            if (end_access && !PWRITE_ref) begin
-                master_out_ref = seq_item.PRDATA;   // Capture read data from sequence item
-            end
-
+        access_end_transition(); // Call function to handle access setup transition
             // Finalize idle phase signals
             end_access = 0;                           // Clear end access signal
             PSEL0_ref = 0;                            // Deassert peripheral select 0
@@ -253,20 +189,7 @@ package apb_scoreboard_pkg;
 
         // Setup phase function: Prepare transaction signals before data access
         function setup_phase;
-            // Update outputs if an access has just finished
-            if (end_access && PWRITE_ref) begin
-                slave_out_ref = PWDATA_ref & {{8{PSTRB_ref[3]}},
-                                              {8{PSTRB_ref[2]}},
-                                              {8{PSTRB_ref[1]}},
-                                              {8{PSTRB_ref[0]}}}; // Process write data update
-            end
-
-            if (end_access && !PWRITE_ref) begin
-                master_out_ref = seq_item.PRDATA;   // Capture read data from sequence item
-            end
-
-            end_access = 0;                         // Reset end access signal
-
+            access_end_transition(); // Call function to handle access setup transition
             // Set up transaction signals based on the current sequence item
             PADDR_ref = seq_item.address;           // Set the target address
             PENABLE_ref = 0;                        // Ensure enable is deasserted during setup
@@ -310,6 +233,22 @@ package apb_scoreboard_pkg;
             if (seq_item.valid && PENABLE_ref) begin
                 PRDATA_ref = seq_item.slave_in;     // Capture data from slave during read operations
             end
+        endfunction
+
+        function access_end_transition;
+            // Update outputs if an access has just finished
+            if (end_access && PWRITE_ref) begin
+                slave_out_ref = PWDATA_ref & {{8{PSTRB_ref[3]}},
+                                              {8{PSTRB_ref[2]}},
+                                              {8{PSTRB_ref[1]}},
+                                              {8{PSTRB_ref[0]}}}; // Process write data update
+            end
+
+            if (end_access && !PWRITE_ref) begin
+                master_out_ref = seq_item.PRDATA;   // Capture read data from sequence item
+            end
+
+            end_access = 0;                         // Reset end access signal
         endfunction
 
         // Report phase: Output final scoreboard results

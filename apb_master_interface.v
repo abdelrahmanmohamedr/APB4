@@ -48,14 +48,13 @@ module apb_master_interface (PCLK, PRESETn, PADDR, PPROT, PSEL0, PSEL1, PENABLE,
     end
 
     // Always block triggered on the rising edge of the clock
-    always @(*) begin
-            case (current_state)
+    always @(posedge PCLK) begin
+            case (next_state)
                 IDLE_PHASE: begin
                     PSEL0 <= 0;                             // Deassert peripheral select 0
                     PSEL1 <= 0;                             // Deassert peripheral select 1
                     PENABLE <= 0;                           // Deassert enable signal
                 end
-
                 SETUP_PHASE: begin
                     PADDR <= address;                       // Set address
                     PENABLE <= 0;                           // Deassert enable signal
@@ -107,34 +106,38 @@ module apb_master_interface (PCLK, PRESETn, PADDR, PPROT, PSEL0, PSEL1, PENABLE,
 
     // Always block for next state logic
     always @(*) begin
-        case (current_state)
-            IDLE_PHASE: begin
-                if (process == (7'b0000011) || process == (7'b0100011)) begin
-                    next_state <= SETUP_PHASE;              // Transition to SETUP
-                end else begin
-                    next_state <= IDLE_PHASE;               // Remain in IDLE
+        if (!PRESETn) begin
+            next_state <= IDLE_PHASE;                      // Reset to IDLE state
+        end else begin
+            case (current_state)
+                IDLE_PHASE: begin
+                    if (process == (7'b0000011) || process == (7'b0100011)) begin
+                        next_state <= SETUP_PHASE;              // Transition to SETUP
+                    end else begin
+                        next_state <= IDLE_PHASE;               // Remain in IDLE
+                    end
                 end
-            end
 
-            SETUP_PHASE: begin
-                if (!PSEL0 && !PSEL1) begin
-                    next_state <= IDLE_PHASE;                 // Transition to ACCESS
-                end else begin
-                    next_state <= ACCESS_PHASE;                 // Transition to ACCESS
-                end
-            end 
+                SETUP_PHASE: begin
+                    if (!PSEL0 && !PSEL1) begin
+                        next_state <= IDLE_PHASE;                 // Transition to ACCESS
+                    end else begin
+                        next_state <= ACCESS_PHASE;                 // Transition to ACCESS
+                    end
+                end 
 
-            ACCESS_PHASE: begin
-                if (PREADY && ((process == (7'b0000011)) || (process == (7'b0100011)))) begin
-                    next_state <= SETUP_PHASE;              // Transition to SETUP
-                end else if (PREADY) begin
-                    next_state <= IDLE_PHASE;               // Transition to IDLE
-                end else begin
-                    next_state <= ACCESS_PHASE;             // Remain in ACCESS
+                ACCESS_PHASE: begin
+                    if (PREADY && ((process == (7'b0000011)) || (process == (7'b0100011)))) begin
+                        next_state <= SETUP_PHASE;              // Transition to SETUP
+                    end else if (PREADY) begin
+                        next_state <= IDLE_PHASE;               // Transition to IDLE
+                    end else begin
+                        next_state <= ACCESS_PHASE;             // Remain in ACCESS
+                    end
                 end
-            end
-            default: next_state <= IDLE_PHASE;              // Default to IDLE
-        endcase
+                default: next_state <= IDLE_PHASE;              // Default to IDLE
+            endcase
+        end
     end
 
     // Always block to capture read data on the rising edge of the clock
