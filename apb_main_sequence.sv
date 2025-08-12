@@ -27,7 +27,7 @@ package apb_main_sequence_pkg;
         // Body task
         task body();
             // Sequence randomization
-            repeat(1000) begin
+            repeat(900000000) begin
                 seq_item = apb_sequence_item::type_id::create("seq_item"); // Create sequence item
                 start_item(seq_item);                       // Start the sequence item
                 assert (seq_item.randomize());              // Randomize the sequence item
